@@ -3,27 +3,40 @@ import json
 import re
 import sys
 from datetime import datetime
-import google.generativeai as genai
 from dotenv import load_dotenv
 
-# 환경 변수 로드 (로컬: .env / 배포: st.secrets)
+# 디버깅을 위한 출력
+print("Python version:", sys.version)
+print("Current directory:", os.getcwd())
+
+# 1. 라이브러리 로드 시도
+try:
+    import google.generativeai as genai
+    import streamlit as st
+    print("Libraries imported successfully.")
+except ImportError as e:
+    print(f"ImportError: {e}")
+    sys.exit(1)
+
+# 2. 환경 변수 로드 (로컬: .env / 배포: st.secrets)
 def get_env_var(key):
     # 1. Streamlit Secrets 확인
     try:
-        import streamlit as st
         if key in st.secrets:
             return st.secrets[key]
-    except:
-        pass
+    except Exception as e:
+        print(f"Secret check info: {e}")
     # 2. OS 환경 변수 또는 .env 확인
     load_dotenv()
-    return os.getenv(key)
+    val = os.getenv(key)
+    return val
 
 api_key = get_env_var("GEMINI_API_KEY")
 if not api_key:
-    print(f"Error: {key} not found in environment or secrets.")
+    print("Error: GEMINI_API_KEY not found in environment or secrets.")
     sys.exit(1)
 
+print(f"API Key loaded (starts with: {api_key[:5]}...)")
 genai.configure(api_key=api_key)
 
 def read_product_info():
