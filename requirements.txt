@@ -1,4 +1,7 @@
-google-generativeai
+streamlit
 playwright
+google-generativeai
 python-dotenv
 requests
+pyperclip
+Pillow

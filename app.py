@@ -4,6 +4,13 @@ import json
 import subprocess
 from datetime import datetime
 
+# Playwright 설치 확인 및 자동 설치 (배포 환경용)
+try:
+    import playwright
+except ImportError:
+    subprocess.run(["pip", "install", "playwright"])
+    subprocess.run(["playwright", "install", "chromium"])
+
 # 페이지 설정
 st.set_page_config(page_title="블로그 자동화 시스템", page_icon="🤖", layout="wide")
 
