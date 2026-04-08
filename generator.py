@@ -28,7 +28,7 @@ def extract_json(text):
     except Exception: return text
 
 def generate_blog_posts(keywords):
-    # 이전에 잘 작동했던 안정적인 모델명 사용
+    # 한도가 넉넉한 gemini-3-flash-preview 모델 사용
     model = genai.GenerativeModel('gemini-3-flash-preview')
     
     prompt = f"""
@@ -38,6 +38,17 @@ def generate_blog_posts(keywords):
     본문에 삽입할 'Nano Banana(Gemini Image)' 모델용 이미지 생성 프롬프트를 영어로 작성해줘.
     반드시 아래의 JSON 형식으로만 응답해.
     
+    1. [네이버 블로그 스타일]
+    - 특징: 매우 친근한 말투, 풍부한 이모지 사용.
+    - 구성: 인사말 - 섭외 고민점 - 아츠로 소개 - 결론.
+
+    2. [티스토리 스타일]
+    - 특징: 전문적이고 분석적인 어조, 구조화된 정보 전달, HTML 태그 사용.
+    - 구성: 서론 - 섭외 프로세스 분석 - 아츠로 강점 - 맺음말.
+
+    3. [구글 블로거(SEO) 스타일]
+    - 특징: 검색 최적화(SEO) 고려, 핵심 키워드 반복, FAQ 포함.
+
     [이미지 프롬프트 가이드]
     - 스타일: Realistic, High-quality photography, Cinematic lighting, 8k resolution.
     - 내용: {keywords}와 관련된 전문적이고 세련된 비즈니스/행사 장면.
@@ -45,9 +56,9 @@ def generate_blog_posts(keywords):
     JSON 응답 형식:
     {{
       "naver": {{ "title": "제목", "content": "내용..." }},
-      "tistory": {{ "title": "제목", "content": "내용 (HTML 포함)..." }},
+      "tistory": {{ "title": "제목", "content": "내용 (HTML 포함)" }},
       "google": {{ "title": "제목", "content": "내용 (HTML/FAQ 포함)..." }},
-      "image_prompt": "masterpiece, best quality, professional photo of ..., highly detailed, realistic, 8k uhd, at the bottom of the image has a text that says '아츠로'"
+      "image_prompt": "masterpiece, best quality, professional photo of ..., highly detailed, 8k uhd"
     }}
     """
 
