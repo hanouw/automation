@@ -1,23 +1,37 @@
 import os
 import json
 import re
+import sys
 from datetime import datetime
 import google.generativeai as genai
 from dotenv import load_dotenv
 
-# .env 파일 로드
-load_dotenv()
+# 환경 변수 로드 (로컬: .env / 배포: st.secrets)
+def get_env_var(key):
+    # 1. Streamlit Secrets 확인
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    # 2. OS 환경 변수 또는 .env 확인
+    load_dotenv()
+    return os.getenv(key)
 
-# Gemini API 설정
-api_key = os.getenv("GEMINI_API_KEY")
+api_key = get_env_var("GEMINI_API_KEY")
 if not api_key:
-    print("Error: GEMINI_API_KEY not found in .env")
-    exit(1)
+    print(f"Error: {key} not found in environment or secrets.")
+    sys.exit(1)
 
 genai.configure(api_key=api_key)
 
 def read_product_info():
-    file_path = os.path.join("source_data", "product_info.md")
+    folder_path = "source_data"
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        
+    file_path = os.path.join(folder_path, "product_info.md")
     if not os.path.exists(file_path):
         print(f"Warning: {file_path} not found.")
         return None

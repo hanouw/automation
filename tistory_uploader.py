@@ -2,14 +2,25 @@ import os
 import json
 import time
 import pyperclip
+import re
+import sys
 from glob import glob
+from datetime import datetime
 from playwright.sync_api import sync_playwright
 from dotenv import load_dotenv
 
-# .env 파일 로드
-load_dotenv()
+# 환경 변수 로드 (로컬: .env / 배포: st.secrets)
+def get_env_var(key):
+    try:
+        import streamlit as st
+        if key in st.secrets:
+            return st.secrets[key]
+    except:
+        pass
+    load_dotenv()
+    return os.getenv(key)
 
-TISTORY_BLOG_NAME = os.getenv("TISTORY_BLOG_NAME")
+TISTORY_BLOG_NAME = get_env_var("TISTORY_BLOG_NAME")
 USER_DATA_DIR = os.path.join(os.getcwd(), "tistory_user_data")
 
 def get_latest_post():
