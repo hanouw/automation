@@ -6,7 +6,13 @@ __pycache__/
 venv/
 ENV/
 env/
-.env
-.venv
-node_modules/
 .DS_Store
+
+# User Session Data (로그인 정보)
+naver_user_data/
+tistory_user_data/
+google_user_data/
+
+# Generated Files
+text_generated/
+images_generated/
