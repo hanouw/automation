@@ -49,11 +49,14 @@ with col1:
             
             with st.spinner("작업 진행 중..."):
                 try:
-                    # 가상환경 파이썬 사용
-                    python_exe = os.path.join("venv", "Scripts", "python.exe")
-                    if not os.path.exists(python_exe): python_exe = "python"
+                    # 환경별 파이썬 실행 경로 자동 인식
+                    if os.name == 'nt': # Windows
+                        python_exe = os.path.join("venv", "Scripts", "python.exe")
+                        if not os.path.exists(python_exe): python_exe = "python"
+                    else: # Linux (Streamlit Cloud)
+                        python_exe = "python"
                     
-                    # run_all.py에서 utf-8 출력을 강제했으므로 여기서도 utf-8로 읽음
+                    # 모든 출력을 가져오기 위해 capture_output=True 사용
                     result = subprocess.run(
                         [python_exe, "run_all.py"], 
                         capture_output=True, 
@@ -62,14 +65,20 @@ with col1:
                         errors="replace"
                     )
                     
+                    # 실행 결과 상세 출력 (디버깅용)
+                    if result.stdout:
+                        st.info("실행 로그:")
+                        st.code(result.stdout)
+                    
                     if result.returncode == 0:
                         st.success("🎊 모든 작업이 성공적으로 완료되었습니다!")
-                        st.code(result.stdout)
                     else:
-                        st.error("❌ 작업 중 오류가 발생했습니다.")
-                        st.code(result.stderr)
+                        st.error(f"❌ 작업 중 오류가 발생했습니다. (Exit Code: {result.returncode})")
+                        if result.stderr:
+                            st.warning("상세 에러 내용:")
+                            st.code(result.stderr)
                 except Exception as e:
-                    st.error(f"실행 오류: {e}")
+                    st.error(f"시스템 실행 오류: {e}")
 
 with col2:
     if st.button("📄 최근 생성된 글 확인", use_container_width=True):
