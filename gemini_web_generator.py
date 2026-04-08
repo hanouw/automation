@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 # .env 파일 로드
 load_dotenv()
 
-# 구글 세션 저장 폴더
 USER_DATA_DIR = os.path.join(os.getcwd(), "google_user_data")
 
 def get_latest_image_prompt():
@@ -23,96 +22,106 @@ def get_latest_image_prompt():
         return data.get("image_prompt")
 
 def generate_image_on_web():
+    now = datetime.now().strftime("%m%d_%H%M")
     prompt = get_latest_image_prompt()
+    
     if not prompt:
-        print("❌ 이미지 프롬프트가 없습니다. generator.py를 먼저 실행하세요.")
+        print("❌ 이미지 프롬프트가 없습니다.")
         return
 
-    # Gemini 웹용 명령어로 가공 (영문 프롬프트 앞에 'Create an image of' 추가)
-    full_prompt = f"Generate 2 high-quality images of: {prompt}"
-
     with sync_playwright() as p:
-        print(f"🚀 Gemini 웹 브라우저 실행 중... (세션 저장소: {USER_DATA_DIR})")
-        
-        # 자동화 탐지 방지를 위해 일반 브라우저처럼 위장
+        print(f"🚀 Gemini 웹 브라우저 실행 중...")
         context = p.chromium.launch_persistent_context(
             user_data_dir=USER_DATA_DIR,
             headless=False,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox"
-            ],
-            viewport={'width': 1280, 'height': 800}
+            args=["--disable-blink-features=AutomationControlled"],
+            viewport={'width': 1280, 'height': 900}
         )
         
         page = context.new_page()
-        
-        # 1. Gemini 사이트 접속
-        print("🌐 Gemini 웹사이트 접속 중...")
         page.goto("https://gemini.google.com/app")
         time.sleep(5)
 
-        # 2. 로그인 확인 (로그인 버튼이 보이면 대기)
-        if page.query_selector("text=로그인") or page.query_selector("text=Sign in"):
-            print("🔑 구글 로그인이 필요합니다. 브라우저 창에서 로그인을 완료해 주세요!")
-            print("⏳ 로그인이 완료되어 채팅창이 나타날 때까지 대기합니다...")
-            # 채팅창(프롬프트 입력칸)이 보일 때까지 무한 대기
-            page.wait_for_selector(".ql-editor, textarea, [contenteditable='true']", timeout=0)
-            print("✅ 로그인 확인되었습니다!")
-            time.sleep(3)
-
-        # 3. 프롬프트 입력 및 전송
-        print(f"📝 이미지 생성 요청 중: {prompt[:50]}...")
-        
         try:
-            # Gemini 입력창은 보통 contenteditable div입니다.
-            input_selector = ".ql-editor, textarea, [contenteditable='true']"
-            page.wait_for_selector(input_selector)
+            # 1. '이미지 만들기' 클릭 및 템플릿 선택
+            image_tool_btn = page.locator("button:has-text('이미지 만들기')").first
+            if image_tool_btn.is_visible():
+                image_tool_btn.click()
+                time.sleep(3)
             
-            # 사람처럼 타이핑 (또는 붙여넣기)
+            page.wait_for_selector("media-gen-template-card", timeout=15000)
+            templates = page.locator("media-gen-template-card").all()
+            if templates:
+                random.choice(templates).click()
+                time.sleep(5)
+
+            # 2. 프롬프트 입력
+            print(f"📝 프롬프트 입력 및 전송 중...")
+            input_selector = "div.ql-editor[contenteditable='true'], textarea"
+            page.wait_for_selector(input_selector, timeout=20000)
             page.click(input_selector)
-            page.keyboard.type(full_prompt, delay=random.randint(20, 50))
-            time.sleep(1)
+            page.keyboard.type(prompt, delay=30)
             page.keyboard.press("Enter")
             
-            print("⏳ 이미지가 생성되는 동안 기다립니다... (약 30초~1분)")
-            
-            # 4. 이미지 생성 완료 대기 (응답 완료를 알리는 요소 대기)
-            # 이미지가 포함된 요소가 나타날 때까지 넉넉히 대기
+            print("⏳ 이미지 생성 대기 중... (80초)")
             time.sleep(80) 
+
+            # 3. 이미지 다운로드 로직 (강화됨)
+            print("📸 이미지 다운로드를 시도합니다...")
             
-            # 5. 이미지 저장 로직
-            # Gemini는 이미지 로딩이 완료되면 img 태그가 생성됩니다.
-            # 가장 최신 응답의 이미지를 찾습니다.
-            images = page.query_selector_all("img")
+            # 프로필 사진(.user-icon)을 제외하고, 실제 생성된 이미지만 찾습니다.
+            # 보통 생성된 이미지는 'media-gen-result'나 특정 컨테이너 안에 있습니다.
+            img_selector = "img[src*='googleusercontent.com']:not(.user-icon):not([alt*='프로필'])"
             
-            output_dir = "images_generated"
-            if not os.path.exists(output_dir): os.makedirs(output_dir)
+            try:
+                # 이미지가 나타날 때까지 대기
+                page.wait_for_selector(img_selector, timeout=30000)
+                all_images = page.locator(img_selector).all()
+                
+                # 가장 마지막에 생성된 이미지를 선택
+                target_img = all_images[-1]
+                
+                # 4. 다운로드 버튼 직접 클릭 (강제 클릭 모드)
+                # 마우스 호버를 시도하되, 안 되어도 강제로 버튼을 찾아 클릭합니다.
+                try:
+                    target_img.hover(timeout=5000)
+                    time.sleep(1)
+                except:
+                    pass
+
+                download_btn_selector = "button[data-test-id='download-generated-image-button']"
+                download_btn = page.locator(download_btn_selector).last # 가장 최근 버튼
+                
+                if download_btn:
+                    print("✅ 다운로드 버튼 발견! 저장을 시작합니다... (최대 2분 대기)")
+                    try:
+                        # 다운로드 이벤트 대기 시간을 120초로 연장
+                        with page.expect_download(timeout=120000) as download_info:
+                            download_btn.click(force=True)
+                        
+                        download = download_info.value
+                        output_dir = "images_generated"
+                        if not os.path.exists(output_dir): os.makedirs(output_dir)
+                        
+                        save_path = os.path.join(output_dir, f"gemini_web_{now}.png")
+                        download.save_as(save_path)
+                        print(f"🎊 이미지 저장 완료: {save_path}")
+                    except Exception as download_error:
+                        print(f"⚠️ 다운로드 대기 시간 초과 또는 오류: {download_error}")
+                        raise download_error
+                else:
+                    raise Exception("다운로드 버튼을 찾을 수 없습니다.")
             
-            count = 0
-            for i, img in enumerate(images):
-                src = img.get_attribute("src")
-                # 구글에서 생성된 이미지는 보통 'https://...googleusercontent.com' 주소를 가짐
-                if src and "googleusercontent.com" in src:
-                    now = datetime.now().strftime("%m%d_%H%M")
-                    img_path = os.path.join(output_dir, f"gemini_web_{now}_{count}.png")
-                    
-                    # 이미지를 스크린샷으로 찍거나 데이터 다운로드 (여기서는 간단히 로그 출력)
-                    # 실제 운영 시에는 src 주소를 requests로 다운로드하는 로직 보강 가능
-                    img.screenshot(path=img_path)
-                    print(f"✅ 이미지 저장됨: {img_path}")
-                    count += 1
-                    if count >= 1: break # 첫 번째 이미지만 일단 저장
-            
-            if count == 0:
-                print("⚠️ 생성된 이미지를 찾지 못했습니다. 수동 확인이 필요할 수 있습니다.")
-                print("💡 생성은 완료되었을 수 있으니 브라우저 창을 확인해 보세요.")
+            except Exception as inner_e:
+                print(f"❌ 다운로드 중 오류: {inner_e}")
+                print("💡 백업: 전체 화면 캡처를 시도합니다.")
+                page.screenshot(path=os.path.join("images_generated", f"error_backup_{now}.png"))
 
         except Exception as e:
-            print(f"❌ 작업 중 오류 발생: {e}")
+            print(f"❌ 전체 오류: {e}")
 
-        print("✅ 20초 후 브라우저를 종료합니다. (결과 확인용)")
-        time.sleep(20)
+        print("✅ 10초 후 종료합니다.")
+        time.sleep(10)
         context.close()
 
 if __name__ == "__main__":

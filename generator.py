@@ -47,7 +47,7 @@ def generate_blog_posts(keywords):
       "naver": {{ "title": "제목", "content": "내용..." }},
       "tistory": {{ "title": "제목", "content": "내용 (HTML 포함)..." }},
       "google": {{ "title": "제목", "content": "내용 (HTML/FAQ 포함)..." }},
-      "image_prompt": "masterpiece, best quality, professional photo of ..., highly detailed, cinematic lighting, 8k uhd"
+      "image_prompt": "masterpiece, best quality, professional photo of ..., highly detailed, realistic, 8k uhd, at the bottom of the image has a text that says '아츠로'"
     }}
     """
 
