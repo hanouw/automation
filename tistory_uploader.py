@@ -55,34 +55,70 @@ def upload_tistory_blog():
         page.goto(write_url)
         
         # 3. 화면 인식 및 로그인
+        # 3. 화면 인식 및 로그인
         try:
+            # 먼저 현재 페이지가 글쓰기 페이지인지 확인
+            print("🔎 로그인 상태 확인 중...")
             page.wait_for_function(
                 "() => window.location.href.includes('manage/newpost') || !!document.querySelector('#title-area')",
-                timeout=2000
+                timeout=5000  # 우선 5초만 대기해서 로그인 여부 판단
             )
-            print("✅ 글쓰기 화면 진입 확인!")
+            print("✅ 로그인 상태임이 확인되었습니다.")
         except:
+            print("🔑 로그인이 필요합니다. 자동 로그인 시도 중...")
             try:
-                # 카카오 로그인 버튼 클릭
+                # 카카오 로그인 버튼이 있으면 클릭
                 kakao_btn = page.locator("a:has-text('카카오계정으로 로그인')").first
                 if kakao_btn.is_visible():
                     kakao_btn.click()
-                    time.sleep(3)
+                    time.sleep(2)
                 
-                # 계정 선택: .wrap_profile 클릭
-                print("👤 저장된 첫 번째 계정을 선택합니다.")
+                # 저장된 계정(.wrap_profile)이 있는지 확인
                 account_profile = page.locator(".wrap_profile").first
                 if account_profile.is_visible():
+                    print("👤 저장된 첫 번째 계정을 선택합니다.")
                     account_profile.click(force=True)
-                    time.sleep(5)
                 else:
-                    # Tab 키로 이동 후 엔터 시도 (백업)
-                    page.keyboard.press("Tab")
-                    time.sleep(0.5)
-                    page.keyboard.press("Enter")
-                    time.sleep(5)
+                    # ⭐ 핵심 수정 부분: 자동 선택이 불가능할 경우 수동 로그인 대기
+                    print("📢 저장된 계정이 없습니다. 브라우저 창에서 직접 로그인을 완료해주세요!")
+                    print("⏳ 로그인이 완료될 때까지 무한 대기합니다...")
+                    
+                    # 글쓰기 화면의 제목 입력 칸(#title-area)이 나타날 때까지 무한 대기 (timeout=0)
+                    page.wait_for_selector("#title-area", timeout=0)
+                    print("✅ 수동 로그인 확인! 계속 진행합니다.")
+
             except Exception as e:
-                print(f"⚠️ 자동 로그인 시도 중 오류: {e}")
+                print(f"⚠️ 로그인 처리 중 오류 발생: {e}")
+                print("⏳ 수동으로 글쓰기 화면까지 진입해주세요...")
+                page.wait_for_selector("#title-area", timeout=0)
+        # try:
+        #     page.wait_for_function(
+        #         "() => window.location.href.includes('manage/newpost') || !!document.querySelector('#title-area')",
+        #         timeout=2000
+        #     )
+        #     print("✅ 글쓰기 화면 진입 확인!")
+        # except:
+        #     try:
+        #         # 카카오 로그인 버튼 클릭
+        #         kakao_btn = page.locator("a:has-text('카카오계정으로 로그인')").first
+        #         if kakao_btn.is_visible():
+        #             kakao_btn.click()
+        #             time.sleep(3)
+                
+        #         # 계정 선택: .wrap_profile 클릭
+        #         print("👤 저장된 첫 번째 계정을 선택합니다.")
+        #         account_profile = page.locator(".wrap_profile").first
+        #         if account_profile.is_visible():
+        #             account_profile.click(force=True)
+        #             time.sleep(5)
+        #         else:
+        #             # Tab 키로 이동 후 엔터 시도 (백업)
+        #             page.keyboard.press("Tab")
+        #             time.sleep(0.5)
+        #             page.keyboard.press("Enter")
+        #             time.sleep(5)
+        #     except Exception as e:
+        #         print(f"⚠️ 자동 로그인 시도 중 오류: {e}")
 
         # 4. 방해 요소 제거 (키보드 조작 방식)
         print("🧹 팝업을 확인하고 취소합니다...")

@@ -11,10 +11,20 @@ load_dotenv()
 # Gemini API 설정
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
-    print("Error: GEMINI_API_KEY가 .env 파일에 설정되지 않았습니다.")
+    print("Error: GEMINI_API_KEY not found in .env")
     exit(1)
 
 genai.configure(api_key=api_key)
+
+def read_product_info():
+    file_path = os.path.join("source_data", "product_info.md")
+    if not os.path.exists(file_path):
+        print(f"Warning: {file_path} not found.")
+        return None
+    
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read().strip()
+        return content if content else None
 
 def extract_json(text):
     try:
@@ -27,49 +37,40 @@ def extract_json(text):
         return text
     except Exception: return text
 
-def generate_blog_posts(keywords):
-    # 한도가 넉넉한 gemini-3-flash-preview 모델 사용
+def generate_blog_posts(info_text):
+    # Free Tier에서 안정적인 모델 사용
     model = genai.GenerativeModel('gemini-3-flash-preview')
     
+    if info_text:
+        context_prompt = f"Data:\n{info_text}\nBased on this,"
+    else:
+        context_prompt = "Based on 'Artist booking, Artsro',"
+
     prompt = f"""
-    주제 키워드: {keywords}
+    {context_prompt} write detailed blog posts for Naver, Tistory, and Google Blogger in Korean.
+    Return ONLY JSON format.
     
-    위 키워드를 바탕으로 네이버, 티스토리, 구글 스타일의 블로그 포스팅을 작성하고,
-    본문에 삽입할 'Nano Banana(Gemini Image)' 모델용 이미지 생성 프롬프트를 영어로 작성해줘.
-    반드시 아래의 JSON 형식으로만 응답해.
-    
-    1. [네이버 블로그 스타일]
-    - 특징: 매우 친근한 말투, 풍부한 이모지 사용.
-    - 구성: 인사말 - 섭외 고민점 - 아츠로 소개 - 결론.
+    1. [Naver Style]: Friendly, emojis allowed in content.
+    2. [Tistory Style]: Professional, use HTML tags, include <!-- IMAGE_PLACEHOLDER_1 --> twice.
+    3. [Google Style]: SEO optimized, FAQ included.
 
-    2. [티스토리 스타일]
-    - 특징: 전문적이고 분석적인 어조, 구조화된 정보 전달, HTML 태그 사용.
-    - 구성: 서론 - 섭외 프로세스 분석 - 아츠로 강점 - 맺음말.
-
-    3. [구글 블로거(SEO) 스타일]
-    - 특징: 검색 최적화(SEO) 고려, 핵심 키워드 반복, FAQ 포함.
-
-    [이미지 프롬프트 가이드]
-    - 스타일: Realistic, High-quality photography, Cinematic lighting, 8k resolution.
-    - 내용: {keywords}와 관련된 전문적이고 세련된 비즈니스/행사 장면.
-    
-    JSON 응답 형식:
+    Response JSON:
     {{
-      "naver": {{ "title": "제목", "content": "내용..." }},
-      "tistory": {{ "title": "제목", "content": "내용 (HTML 포함)" }},
-      "google": {{ "title": "제목", "content": "내용 (HTML/FAQ 포함)..." }},
-      "image_prompt": "masterpiece, best quality, professional photo of ..., highly detailed, 8k uhd"
+      "naver": {{ "title": "...", "content": "..." }},
+      "tistory": {{ "title": "...", "content": "..." }},
+      "google": {{ "title": "...", "content": "..." }},
+      "image_prompt": "english image prompt..."
     }}
     """
 
-    print(f"'{keywords}' 키워드로 고품질 글과 이미지 프롬프트를 생성 중입니다...")
+    print("Generating content via Gemini AI...")
     
     try:
         response = model.generate_content(prompt)
         json_text = extract_json(response.text)
         return json.loads(json_text)
     except Exception as e:
-        print(f"❌ 글 생성 중 오류 발생: {e}")
+        print(f"Error during generation: {e}")
         return None
 
 def save_posts(posts_data):
@@ -79,19 +80,18 @@ def save_posts(posts_data):
     now = datetime.now().strftime("%m%d_%H%M")
     base_filename = f"blogtxt_{now}"
     
-    # 통합 JSON 저장
     with open(os.path.join(output_dir, f"{base_filename}.json"), "w", encoding="utf-8") as f:
         json.dump(posts_data, f, ensure_ascii=False, indent=2)
     
-    # 플랫폼별 TXT 저장
     for platform in ["naver", "tistory", "google"]:
         if platform in posts_data:
             with open(os.path.join(output_dir, f"{base_filename}_{platform}.txt"), "w", encoding="utf-8") as f:
-                f.write(f"제목: {posts_data[platform]['title']}\n\n{posts_data[platform]['content']}")
+                f.write(f"Title: {posts_data[platform]['title']}\n\n{posts_data[platform]['content']}")
             
-    print(f"\n✅ '{output_dir}' 폴더에 '{base_filename}.json' 파일이 생성되었습니다.")
+    print(f"Success: {base_filename}.json created.")
 
 if __name__ == "__main__":
-    keywords = "연예인 섭외, 아츠로, 공연섭외"
-    posts = generate_blog_posts(keywords)
-    if posts: save_posts(posts)
+    info_text = read_product_info()
+    posts = generate_blog_posts(info_text)
+    if posts: 
+        save_posts(posts)
