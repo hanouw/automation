@@ -1,5 +1,6 @@
 import os
 import json
+import random
 import time
 import pyperclip
 import re
@@ -148,6 +149,9 @@ def upload_tistory_blog():
             # 1. 제목 입력 (로딩 즉시 제목 칸이므로 바로 붙여넣기)
             print("✏️ 제목 입력 중...")
             pyperclip.copy(title)
+            page.keyboard.press("Control+a")
+            page.keyboard.press("Backspace")
+            time.sleep(0.5)
             page.keyboard.press("Control+v")
             time.sleep(1)
             
@@ -211,6 +215,38 @@ def upload_tistory_blog():
                     page.click("label[for='open20']", force=True)
                     time.sleep(1)
                 except: pass
+
+                # 최종 발행 전 예약 설정 추가
+                print("⏰ 예약 발행 설정을 시작합니다...")
+                try:
+                    # '예약' 버튼 클릭
+                    reserve_btn = page.locator("button.btn_date:has-text('예약')").first
+                    if reserve_btn.is_visible():
+                        reserve_btn.click()
+                        time.sleep(1)
+                        
+                        # 시간 설정 (19시 고정)
+                        hour_input = page.locator("#dateHour")
+                        if hour_input.is_visible():
+                            hour_input.click()
+                            # 기존 값 지우기 (백스페이스 2번)
+                            page.keyboard.press("Backspace")
+                            page.keyboard.press("Backspace")
+                            page.keyboard.type("19")
+                            time.sleep(0.5)
+                        
+                        # 분 설정 (0~30 랜덤)
+                        minute_val = str(random.randint(0, 30))
+                        minute_input = page.locator("#dateMinute")
+                        if minute_input.is_visible():
+                            minute_input.click()
+                            page.keyboard.press("Backspace")
+                            page.keyboard.press("Backspace")
+                            page.keyboard.type(minute_val)
+                            print(f"✅ 예약 시간 설정 완료: 19시 {minute_val}분")
+                            time.sleep(0.5)
+                except Exception as e:
+                    print(f"⚠️ 예약 설정 중 오류 (무시하고 진행): {e}")
 
                 # 최종 발행 버튼
                 print("🎊 최종 발행 버튼 클릭!")

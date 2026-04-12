@@ -78,7 +78,7 @@ def generate_blog_posts(info_text):
     Return ONLY JSON format.
     
     1. [Naver Style]: Friendly, emojis allowed in content.
-    2. [Tistory Style]: Professional, use HTML tags, include <!-- IMAGE_PLACEHOLDER_1 --> twice.
+    2. [Tistory Style]: Professional, use HTML tags.
     3. [Google Style]: SEO optimized, FAQ included.
 
     Response JSON:
