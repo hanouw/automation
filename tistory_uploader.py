@@ -22,7 +22,10 @@ def get_env_var(key):
     return os.getenv(key)
 
 TISTORY_BLOG_NAME = get_env_var("TISTORY_BLOG_NAME")
-USER_DATA_DIR = os.path.join(os.getcwd(), "tistory_user_data")
+
+# 환경 변수에서 계정 이름 가져오기 (app.py에서 전달)
+TISTORY_ACCOUNT_NAME = os.getenv("TISTORY_ACCOUNT_NAME", "default")
+USER_DATA_DIR = os.path.join(os.getcwd(), "tistory_user_data", TISTORY_ACCOUNT_NAME)
 
 def get_latest_post():
     """text_generated 폴더에서 가장 최신 JSON 파일을 읽어옵니다."""
