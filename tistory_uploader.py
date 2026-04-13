@@ -48,7 +48,19 @@ def upload_tistory_blog():
     title = tistory_post["title"]
     content = tistory_post["content"]
 
-    blog_id = TISTORY_BLOG_NAME.replace(".tistory.com", "")
+    # 📝 계정별 설정 로드 (블로그 주소)
+    config_path = os.path.join(USER_DATA_DIR, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+            # 주소에서 ID만 추출 (id.tistory.com -> id)
+            blog_url = config.get("blog_url", "").replace("https://", "").replace("http://", "").split("/")[0]
+            blog_id = blog_url.split(".")[0]
+            print(f"✅ 계정 설정 로드 완료: {blog_id}")
+    else:
+        # 설정 파일이 없으면 기존 방식(환경변수) 사용
+        blog_id = TISTORY_BLOG_NAME.replace(".tistory.com", "")
+        print(f"⚠️ 계정 설정을 찾을 수 없어 기본값({blog_id})을 사용합니다.")
 
     with sync_playwright() as p:
         # 1. 브라우저 실행 (세션 유지)
@@ -60,24 +72,18 @@ def upload_tistory_blog():
         )
         
         page = context.new_page()
-        
-        # ⚠️ 브라우저 대화상자(Alert, Confirm) 자동 수락 설정
         page.on("dialog", lambda dialog: dialog.accept())
         
         # 2. 글쓰기 페이지 직접 이동
-        print("🌐 티스토리 글쓰기 페이지 접속 중...")
+        print(f"🌐 티스토리 글쓰기 페이지 접속 중... ({blog_id})")
         write_url = f"https://{blog_id}.tistory.com/manage/newpost/"
         page.goto(write_url)
         
         # 3. 화면 인식 및 로그인
-        # 3. 화면 인식 및 로그인
         try:
             # 먼저 현재 페이지가 글쓰기 페이지인지 확인
             print("🔎 로그인 상태 확인 중...")
-            page.wait_for_function(
-                "() => window.location.href.includes('manage/newpost') || !!document.querySelector('#title-area')",
-                timeout=5000  # 우선 5초만 대기해서 로그인 여부 판단
-            )
+            page.wait_for_selector("#title-area", timeout=5000)
             print("✅ 로그인 상태임이 확인되었습니다.")
         except:
             print("🔑 로그인이 필요합니다. 자동 로그인 시도 중...")
@@ -101,10 +107,10 @@ def upload_tistory_blog():
                     # 글쓰기 화면의 제목 입력 칸(#title-area)이 나타날 때까지 무한 대기 (timeout=0)
                     page.wait_for_selector("#title-area", timeout=0)
                     print("✅ 수동 로그인 확인! 계속 진행합니다.")
-
+                    
             except Exception as e:
                 print(f"⚠️ 로그인 처리 중 오류 발생: {e}")
-                print("⏳ 수동으로 글쓰기 화면까지 진입해주세요...")
+                print("⏳ 수동으로 글쓰기 화면까지 진입해 주세요...")
                 page.wait_for_selector("#title-area", timeout=0)
         # try:
         #     page.wait_for_function(
