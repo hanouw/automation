@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  blog-automation:
+    build: .
+    container_name: blog_auto_agent
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./source_data:/app/source_data
+      - ./tistory_user_data:/app/tistory_user_data
+      - ./text_generated:/app/text_generated
+      - ./images_generated:/app/images_generated
+    restart: always
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TISTORY_BLOG_NAME=${TISTORY_BLOG_NAME}

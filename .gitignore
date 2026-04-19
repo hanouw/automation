@@ -8,13 +8,16 @@ ENV/
 env/
 .DS_Store
 
-gemini_record/
+agent_record/
+node_modules/
 
 # User Session Data (로그인 정보)
 naver_user_data/
 tistory_user_data/
 google_user_data/
+tistory_debug/
 
 # Generated Files
 text_generated/
 images_generated/
+source_data/
