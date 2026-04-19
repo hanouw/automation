@@ -31,9 +31,14 @@ New-Item -ItemType Directory -Force -Path (Join-Path $DistApp "source_data") | O
 New-Item -ItemType Directory -Force -Path (Join-Path $DistApp "text_generated") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $DistApp "tistory_user_data") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $DistApp "tistory_debug") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $DistApp "blog_prompts") | Out-Null
 
 if (Test-Path (Join-Path $Root ".env")) {
     Copy-Item (Join-Path $Root ".env") (Join-Path $DistApp ".env") -Force
+}
+
+if (Test-Path (Join-Path $Root "blog_prompts")) {
+    Copy-Item (Join-Path $Root "blog_prompts\*.md") (Join-Path $DistApp "blog_prompts") -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ""
