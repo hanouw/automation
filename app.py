@@ -12,9 +12,10 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, make_response, render_template_string, request
 
-from notebooklm_mcp_client import fetch_project_info_with_notebooklm, is_notebooklm_enabled, notebooklm_required
+from prompt_manager import DEFAULT_PROMPT_NAME
 from prompt_manager import delete_prompt as delete_prompt_file
 from prompt_manager import ensure_default_prompt, list_prompts, read_prompt, save_prompt as save_prompt_file
+from project_analyzer import analyze_project_info
 from scraper import scrape_url
 from ui_template import HTML_TEMPLATE
 
@@ -44,6 +45,34 @@ ACTIVE_PROCESSES = {}
 
 def safe_name(name):
     return "".join(c for c in name if c.isalnum() or c in (" ", "_", "-")).strip()
+
+
+def safe_project_path(name):
+    raw_name = (name or "").strip()
+    if not raw_name:
+        return None
+    filename = Path(raw_name).name
+    if not filename.endswith(".md"):
+        filename = f"{safe_name(filename)}.md"
+    target = (DATA_DIR / filename).resolve()
+    target.relative_to(DATA_DIR.resolve())
+    return target
+
+
+def build_campaign_prompt(prompt_dir, selected_prompt):
+    base_template = read_prompt(prompt_dir, DEFAULT_PROMPT_NAME)
+    selected_prompt = (selected_prompt or "").strip()
+    if not selected_prompt or selected_prompt == DEFAULT_PROMPT_NAME:
+        return DEFAULT_PROMPT_NAME, base_template
+
+    extra_template = read_prompt(prompt_dir, selected_prompt)
+    combined_template = "\n\n".join([
+        base_template,
+        "### [ADDITIONAL PROMPT] ###",
+        "아래 추가 프롬프트는 위 기본 홍보형 지침을 유지한 상태에서 글의 톤, 구조, 강조점을 보강하는 용도로만 적용하세요.",
+        extra_template,
+    ])
+    return f"{DEFAULT_PROMPT_NAME} + {selected_prompt}", combined_template
 
 
 def python_worker_command(worker_name, *args):
@@ -109,7 +138,13 @@ def index():
     if not accounts:
         accounts = ["default"]
     prompts = list_prompts(PROMPT_DIR)
-    return render_template_string(HTML_TEMPLATE, profiles=profiles, accounts=accounts, prompts=prompts)
+    return render_template_string(
+        HTML_TEMPLATE,
+        profiles=profiles,
+        accounts=accounts,
+        prompts=prompts,
+        default_prompt_name=DEFAULT_PROMPT_NAME,
+    )
 
 
 @app.route("/run_campaign", methods=["POST"])
@@ -123,8 +158,7 @@ def run_campaign():
             links = data.get("links", [])
             mode = data.get("mode", "generate")
             project = data.get("project")
-            prompt_name = data.get("prompt") or "기본_홍보형"
-            prompt_template = read_prompt(PROMPT_DIR, prompt_name)
+            prompt_name, prompt_template = build_campaign_prompt(PROMPT_DIR, data.get("prompt"))
             generated_files = []
             known_files = set(glob(str(GEN_DIR / "*.json")))
 
@@ -283,30 +317,71 @@ def save_profile():
     content = data.get("content", "")
     if not name or not content:
         return jsonify({"status": "error", "message": "프로젝트명과 내용이 필요합니다."})
-    with open(DATA_DIR / f"{name}.md", "w", encoding="utf-8") as f:
+    target_path = DATA_DIR / f"{name}.md"
+    original = data.get("original", "")
+    if original:
+        try:
+            original_path = safe_project_path(original)
+            if (
+                original_path
+                and original_path.exists()
+                and original_path.name != "product_info.md"
+                and original_path.resolve() != target_path.resolve()
+            ):
+                original_path.unlink()
+        except (ValueError, OSError):
+            return jsonify({"status": "error", "message": "기존 프로젝트 경로가 올바르지 않습니다."})
+    with open(target_path, "w", encoding="utf-8") as f:
         f.write(content)
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", "file": target_path.name})
+
+
+@app.route("/get_profile")
+def get_profile():
+    try:
+        path = safe_project_path(request.args.get("name", ""))
+    except ValueError:
+        return jsonify({"status": "error", "message": "잘못된 프로젝트 경로입니다."})
+    if not path or not path.exists() or path.name == "product_info.md":
+        return jsonify({"status": "error", "message": "프로젝트 파일이 존재하지 않습니다."})
+    return jsonify({
+        "status": "success",
+        "file": path.name,
+        "name": path.stem,
+        "content": path.read_text(encoding="utf-8"),
+    })
+
+
+@app.route("/delete_profile", methods=["POST"])
+def delete_profile():
+    try:
+        path = safe_project_path((request.json or {}).get("name", ""))
+    except ValueError:
+        return jsonify({"status": "error", "message": "잘못된 프로젝트 경로입니다."})
+    if not path or not path.exists() or path.name == "product_info.md":
+        return jsonify({"status": "error", "message": "삭제할 프로젝트 파일이 존재하지 않습니다."})
+    path.unlink()
+    return jsonify({"status": "success", "file": path.name})
 
 
 @app.route("/fetch_url_info", methods=["POST"])
 def fetch_url_info():
     url = (request.json or {}).get("url", "")
-    if is_notebooklm_enabled():
-        try:
-            result = fetch_project_info_with_notebooklm(url)
-            return jsonify({
-                "status": "success",
-                "source": "notebooklm_mcp",
-                "title": result["title"],
-                "content": result["content"][:3000],
-            })
-        except Exception as e:
-            if notebooklm_required():
-                return jsonify({"status": "error", "message": f"NotebookLM MCP 실패: {e}"})
-
     result = scrape_url(url)
     if not result:
         return jsonify({"status": "error", "message": "수집 실패"})
+
+    try:
+        report = analyze_project_info(result)
+        return jsonify({
+            "status": "success",
+            "source": "gemini_report",
+            "title": report["title"],
+            "content": report["content"][:4000],
+        })
+    except Exception:
+        pass
+
     return jsonify({
         "status": "success",
         "source": "scraper",

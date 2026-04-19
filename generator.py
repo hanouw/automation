@@ -20,6 +20,12 @@ BAD_IMAGE_KEYWORDS = ['logo', 'ico', 'icon', '아이콘', 'btn', 'common', 'head
 OUTPUT_FORMAT_RULE = """
 
 ### 시스템 고정 출력 규칙 ###
+프로젝트 정보에 [BACKLINK INFO]가 있고 URL이 "없음"이 아니라면 각 플랫폼 본문에 백링크를 자연스럽게 1회 이상 포함하세요.
+- URL을 일반 텍스트로 그대로 노출하지 말고, 제공된 ANCHOR_TEXTS 중 문맥에 맞는 앵커텍스트를 골라 하이퍼링크로 작성하세요.
+- tistory와 google 본문은 <a href="URL" target="_blank" rel="noopener">앵커텍스트</a> 형식을 사용하세요.
+- naver 본문도 링크가 필요한 위치에는 <a href="URL" target="_blank" rel="noopener">앵커텍스트</a> 형식을 사용하세요.
+- [PROMO TEXT] 안에 URL이 있다면 해당 URL도 백링크 대상입니다. 마무리 문구에 URL을 그대로 쓰지 말고 하이퍼링크로 바꾸세요.
+
 반드시 아래 구조의 JSON으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요.
 {
   "naver": { "title": "네이버 제목", "content": "네이버 본문" },
@@ -78,16 +84,88 @@ def remove_bad_images_from_content(content, allowed_image_keys=None):
     return re.sub(r'https?://[^\s"\'<>]+\.(?:jpg|jpeg|png|webp)(?:\?[^\s"\'<>]*)?', replace_bare_url, content, flags=re.IGNORECASE)
 
 
-def sanitize_posts(posts, allowed_images=None):
+def extract_section(text, section_name):
+    pattern = rf"### \[{re.escape(section_name)}\] ###\s*(.*?)(?=\n### \[|\Z)"
+    match = re.search(pattern, text or "", re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def unique_preserve_order(values):
+    seen = set()
+    result = []
+    for value in values:
+        value = (value or "").strip()
+        if not value or value in seen or value == "없음":
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def extract_backlink_info(project_info):
+    backlink_section = extract_section(project_info, "BACKLINK INFO")
+    promo_section = extract_section(project_info, "PROMO TEXT")
+    urls = []
+    anchors = []
+
+    if backlink_section:
+        urls.extend(re.findall(r'https?://[^\s<>"\')]+', backlink_section))
+        anchor_match = re.search(r'ANCHOR_TEXTS:\s*(.*?)(?=\n[A-Z_]+:|\Z)', backlink_section, re.DOTALL)
+        if anchor_match:
+            anchors.extend(line.strip("- ").strip() for line in anchor_match.group(1).splitlines())
+
+    urls.extend(re.findall(r'https?://[^\s<>"\')]+', promo_section))
+    return {
+        "urls": unique_preserve_order(urls),
+        "anchors": unique_preserve_order(anchors),
+    }
+
+
+def convert_bare_backlinks(content, backlink_info):
+    if not content:
+        return content
+    urls = backlink_info.get("urls") or []
+    anchors = backlink_info.get("anchors") or []
+    if not urls:
+        return content
+
+    def is_attribute_value(text, start):
+        prefix = text[max(0, start - 12):start].lower()
+        return any(marker in prefix for marker in ('href="', "href='", 'src="', "src='"))
+
+    def is_inside_anchor(text, start):
+        last_open = text.lower().rfind("<a ", 0, start)
+        last_close = text.lower().rfind("</a>", 0, start)
+        return last_open > last_close
+
+    for index, url in enumerate(urls):
+        anchor = anchors[index % len(anchors)] if anchors else "자세히 보기"
+        link = f'<a href="{url}" target="_blank" rel="noopener">{anchor}</a>'
+
+        def replace(match):
+            if is_attribute_value(content, match.start()) or is_inside_anchor(content, match.start()):
+                return match.group(0)
+            return link
+
+        content = re.sub(re.escape(url), replace, content)
+    if not any(f'href="{url}"' in content or f"href='{url}'" in content for url in urls):
+        anchor = anchors[0] if anchors else "자세히 보기"
+        content = f'{content}\n\n<p><a href="{urls[0]}" target="_blank" rel="noopener">{anchor}</a></p>'
+    return content
+
+
+def sanitize_posts(posts, allowed_images=None, project_info=""):
     if not isinstance(posts, dict):
         return posts
     allowed_image_keys = {image_key(url) for url in (allowed_images or [])}
     allowed_image_keys.discard("")
+    backlink_info = extract_backlink_info(project_info)
 
     for channel in ("naver", "tistory", "google"):
         section = posts.get(channel)
         if isinstance(section, dict):
-            section["content"] = remove_bad_images_from_content(section.get("content", ""), allowed_image_keys)
+            content = remove_bad_images_from_content(section.get("content", ""), allowed_image_keys)
+            section["content"] = convert_bare_backlinks(content, backlink_info)
     return posts
 
 
@@ -107,6 +185,16 @@ def render_prompt_template(template, values):
         rendered = rendered.replace("{" + key + "}", str(value or ""))
     return rendered + OUTPUT_FORMAT_RULE
 
+
+def wrap_project_info(project_info):
+    return f"""아래 프로젝트 정보는 글의 메인 주제가 아니라 보조 홍보 자료입니다.
+반드시 참조 데이터의 주제를 먼저 설명하고, 프로젝트 정보는 브랜드 신뢰, 서비스 연결, 문의 유도, 하단 고정 문구에만 제한적으로 사용하세요.
+프로젝트 보고서의 개요/서비스 범위/강점을 글의 중심 내용으로 반복하지 마세요.
+
+{project_info}
+"""
+
+
 def generate_blog_posts(data, max_retries=3):
     """Gemini API를 사용하여 포스팅을 생성합니다. (429 에러 시 재시도 로직 포함)"""
     if not data: return None
@@ -122,7 +210,7 @@ def generate_blog_posts(data, max_retries=3):
     prompt = render_prompt_template(
         prompt_template,
         {
-            "project_info": project_info,
+            "project_info": wrap_project_info(project_info),
             "source_url": scraped.get("source_url"),
             "source_title": scraped.get("title"),
             "source_content": scraped.get("content"),
@@ -142,7 +230,7 @@ def generate_blog_posts(data, max_retries=3):
             json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
             if json_match:
                 posts = json.loads(json_match.group())
-                posts = sanitize_posts(posts, scraped.get("images", []))
+                posts = sanitize_posts(posts, scraped.get("images", []), project_info)
                 posts["target_date"] = data.get("target_date")
                 posts["target_time"] = data.get("target_time")
                 return posts

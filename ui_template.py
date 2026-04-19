@@ -179,20 +179,27 @@ HTML_TEMPLATE = """
     </div>
     <div class="header-actions">
       <button class="btn-dark" onclick="openModal('accountModal')">계정 추가</button>
-      <button class="btn-green" onclick="openModal('projectModal')">프로젝트 등록</button>
+      <button class="btn-green" onclick="openProjectModal()">프로젝트 등록</button>
       <button class="btn-ghost" onclick="openPromptModal()">프롬프트 관리</button>
     </div>
   </header>
 
   <section class="grid">
     <div class="card">
-      <h2>프로젝트와 계정</h2>
+      <h2>프로젝트</h2>
       <label>프로젝트</label>
       <select id="projectSelect">
         <option value="">프로젝트를 선택하세요</option>
         {% for p in profiles %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
       </select>
+      <div class="actions">
+        <button class="btn-ghost" onclick="editProject()">선택 프로젝트 수정</button>
+        <button class="btn-red" onclick="deleteProject()">선택 프로젝트 삭제</button>
+      </div>
+    </div>
 
+    <div class="card">
+      <h2>티스토리 계정</h2>
       <label>티스토리 계정</label>
       <select id="accountSelect">
         {% for a in accounts %}<option value="{{ a }}">{{ a }}</option>{% endfor %}
@@ -200,15 +207,18 @@ HTML_TEMPLATE = """
       <div class="actions">
         <button class="btn-red" onclick="deleteAccount()">선택 계정 삭제</button>
       </div>
-      <p class="hint">계정 추가와 프로젝트 등록은 상단 버튼에서 관리합니다.</p>
     </div>
 
     <div class="card wide">
       <h2>글쓰기 설정</h2>
-      <label>글 작성 형식</label>
+      <label>추가 글 작성 형식</label>
       <select id="promptSelect">
-        {% for prompt in prompts %}<option value="{{ prompt }}">{{ prompt }}</option>{% endfor %}
+        <option value="">기본 홍보형만 사용</option>
+        {% for prompt in prompts %}
+          {% if prompt != default_prompt_name %}<option value="{{ prompt }}">{{ prompt }}</option>{% endif %}
+        {% endfor %}
       </select>
+      <p class="hint">기본 홍보형은 항상 적용됩니다. 여기서 선택한 프롬프트는 추가 지침으로 덧붙습니다.</p>
 
       <label>참조 링크 목록</label>
       <textarea id="refLinks" placeholder="https://example.com/page1&#10;https://example.com/page2"></textarea>
@@ -272,7 +282,6 @@ HTML_TEMPLATE = """
     <div class="actions">
       <button class="btn-dark" onclick="addAccount()">계정 추가 및 로그인</button>
     </div>
-    <p class="hint">EXE 앱에서는 서버가 아니라 내 PC에 세션이 저장되므로 직접 로그인 방식이 가장 안정적입니다. 추가 후 목록은 자동으로 새로고침됩니다.</p>
   </div>
 </div>
 
@@ -291,12 +300,20 @@ HTML_TEMPLATE = """
     <div class="divider"></div>
 
     <label>프로젝트명</label>
-    <input id="projectName" placeholder="예: 아츠로 공연 섭외">
+    <input id="projectName" placeholder="예: XXX 공연 섭외">
     <label>프로젝트 상세 정보</label>
     <textarea id="projectInfo" placeholder="회사/프로젝트 소개, 강점, 서비스 범위"></textarea>
     <label>하단 고정 홍보문구</label>
-    <textarea id="projectPromo" placeholder="문의 링크, 대표 문구, CTA"></textarea>
-    <button class="btn-green" onclick="saveProject()">프로젝트 저장</button>
+    <textarea id="projectPromo" placeholder="기업 행사, 지역 축제, 대학 축제에 맞는 아티스트 섭외가 필요하다면 XX 공식 홈페이지에서 상담을 남겨주세요.
+https://www.xxx.co.kr/"></textarea>
+    <label>백링크 URL</label>
+    <input id="projectBacklinkUrl" placeholder="https://www.example.com/">
+    <label>앵커텍스트 후보 (줄바꿈으로 구분)</label>
+    <textarea id="projectAnchorTexts" placeholder="예: 연예인 섭외 전문 위쇼&#10;가수 섭외 전문 에이전시&#10;여러개를 넣으면 그 중에서 선택해서 글을 작성합니다.(글 품질 향상)"></textarea>
+    <div class="actions">
+      <button class="btn-green" onclick="saveProject()">프로젝트 저장</button>
+      <button class="btn-ghost" onclick="resetProjectForm()">새 프로젝트로 초기화</button>
+    </div>
   </div>
 </div>
 
@@ -329,6 +346,8 @@ HTML_TEMPLATE = """
 let currentJobId = null;
 let latestPreviewData = null;
 let currentPreviewPlatform = 'tistory';
+let editingProjectFile = null;
+const defaultPromptName = "{{ default_prompt_name }}";
 
 function openModal(id) {
   document.getElementById(id).classList.add('show');
@@ -356,18 +375,34 @@ async function openPromptModal() {
 }
 
 function refreshPromptSelects(prompts, selectedName) {
-  const selects = [document.getElementById('promptSelect'), document.getElementById('promptManageSelect')];
-  selects.forEach(select => {
-    if (!select) return;
-    select.innerHTML = '';
+  const promptSelect = document.getElementById('promptSelect');
+  if (promptSelect) {
+    promptSelect.innerHTML = '';
+    const baseOption = document.createElement('option');
+    baseOption.value = '';
+    baseOption.textContent = '기본 홍보형만 사용';
+    baseOption.selected = !selectedName || selectedName === defaultPromptName;
+    promptSelect.appendChild(baseOption);
+    prompts.filter(prompt => prompt !== defaultPromptName).forEach(prompt => {
+      const option = document.createElement('option');
+      option.value = prompt;
+      option.textContent = prompt;
+      if (prompt === selectedName) option.selected = true;
+      promptSelect.appendChild(option);
+    });
+  }
+
+  const manageSelect = document.getElementById('promptManageSelect');
+  if (manageSelect) {
+    manageSelect.innerHTML = '';
     prompts.forEach(prompt => {
       const option = document.createElement('option');
       option.value = prompt;
       option.textContent = prompt;
       if (prompt === selectedName) option.selected = true;
-      select.appendChild(option);
+      manageSelect.appendChild(option);
     });
-  });
+  }
 }
 
 async function loadPromptForEdit() {
@@ -470,6 +505,98 @@ async function deleteAccount() {
   }
 }
 
+function extractUrls(text) {
+  return Array.from(new Set((text || '').match(/https?:\\/\\/[^\\s<>"')]+/g) || []));
+}
+
+function getSection(content, sectionName) {
+  const source = content || '';
+  const marker = `### [${sectionName}] ###`;
+  const start = source.indexOf(marker);
+  if (start < 0) return '';
+  const rest = source.slice(start + marker.length);
+  const nextSection = rest.indexOf('### [');
+  const section = nextSection >= 0 ? rest.slice(0, nextSection) : rest;
+  return section.trim();
+}
+
+function getBacklinkUrl(backlinkSection) {
+  const urls = extractUrls(backlinkSection);
+  return urls[0] || '';
+}
+
+function getAnchorTexts(backlinkSection) {
+  const match = (backlinkSection || '').match(/ANCHOR_TEXTS:\\s*([\\s\\S]*?)(?=\\n[A-Z_]+:|\\nRULE:|$)/);
+  if (!match) return '';
+  return match[1]
+    .split('\\n')
+    .map(line => line.replace(/^-\\s*/, '').trim())
+    .filter(line => line && line !== '없음')
+    .join('\\n');
+}
+
+function resetProjectForm() {
+  editingProjectFile = null;
+  document.getElementById('projectModalTitle').innerText = '프로젝트 등록 / URL 정보 가져오기';
+  document.getElementById('projectUrl').value = '';
+  document.getElementById('projectName').value = '';
+  document.getElementById('projectInfo').value = '';
+  document.getElementById('projectPromo').value = '';
+  document.getElementById('projectBacklinkUrl').value = '';
+  document.getElementById('projectAnchorTexts').value = '';
+  document.getElementById('projectFetchStatus').innerText = '가져온 내용은 아래 프로젝트 상세 정보 칸에 채워집니다.';
+}
+
+function openProjectModal() {
+  resetProjectForm();
+  openModal('projectModal');
+}
+
+async function editProject() {
+  try {
+    const project = document.getElementById('projectSelect').value;
+    if (!project) return alert('수정할 프로젝트를 선택하세요.');
+    const res = await fetch(`/get_profile?name=${encodeURIComponent(project)}`, {cache: 'no-store'});
+    if (!res.ok) throw new Error(`프로젝트 조회 실패: HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.status !== 'success') return alert(data.message || '프로젝트를 불러오지 못했습니다.');
+
+    const content = data.content || '';
+    const backlinkSection = getSection(content, 'BACKLINK INFO');
+    editingProjectFile = data.file;
+    document.getElementById('projectModalTitle').innerText = '프로젝트 수정 / URL 정보 가져오기';
+    document.getElementById('projectName').value = data.name || '';
+    document.getElementById('projectInfo').value = getSection(content, 'PROJECT INFO') || content;
+    document.getElementById('projectPromo').value = getSection(content, 'PROMO TEXT');
+    document.getElementById('projectBacklinkUrl').value = getBacklinkUrl(backlinkSection);
+    document.getElementById('projectAnchorTexts').value = getAnchorTexts(backlinkSection);
+    document.getElementById('projectFetchStatus').innerText = '기존 프로젝트 정보를 불러왔습니다. 수정 후 저장하세요.';
+    openModal('projectModal');
+  } catch (error) {
+    console.error(error);
+    alert(`프로젝트 수정 화면을 열지 못했습니다. ${error.message || error}`);
+  }
+}
+
+async function deleteProject() {
+  const project = document.getElementById('projectSelect').value;
+  if (!project) return alert('삭제할 프로젝트를 선택하세요.');
+  if (!confirm(`'${project}' 프로젝트를 삭제할까요?`)) return;
+
+  const res = await fetch('/delete_profile', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: project})
+  });
+  const data = await res.json();
+  if (data.status === 'success') {
+    alert('프로젝트가 삭제되었습니다.');
+    location.reload();
+  } else {
+    alert(data.message || '프로젝트 삭제 실패');
+  }
+}
+
 async function fetchProjectInfo() {
   const url = document.getElementById('projectUrl').value.trim();
   if (!url) return alert('URL을 입력하세요.');
@@ -483,9 +610,11 @@ async function fetchProjectInfo() {
   const data = await res.json();
   if (data.status === 'success') {
     document.getElementById('projectInfo').value = `[제목]\\n${data.title}\\n\\n[내용]\\n${data.content}`;
-    status.innerText = data.source === 'notebooklm_mcp'
-      ? 'NotebookLM MCP로 프로젝트 정보를 가져왔습니다.'
-      : '기본 스크래퍼로 프로젝트 정보를 가져왔습니다.';
+    const backlinkInput = document.getElementById('projectBacklinkUrl');
+    if (backlinkInput && !backlinkInput.value.trim()) backlinkInput.value = url;
+    status.innerText = data.source === 'gemini_report'
+      ? 'Gemini로 프로젝트 보고서를 생성했습니다.'
+      : 'Gemini 분석에 실패해 기본 스크래퍼 결과를 사용했습니다.';
   } else {
     status.innerText = 'URL 정보를 가져오지 못했습니다.';
     alert(data.message || 'URL 정보를 가져오지 못했습니다.');
@@ -496,13 +625,23 @@ async function saveProject() {
   const name = document.getElementById('projectName').value.trim();
   const info = document.getElementById('projectInfo').value.trim();
   const promo = document.getElementById('projectPromo').value.trim();
+  const backlinkUrl = document.getElementById('projectBacklinkUrl').value.trim();
+  const anchorTexts = document.getElementById('projectAnchorTexts').value.trim();
   if (!name || !info) return alert('프로젝트명과 상세 정보를 입력하세요.');
+  const backlinkUrls = Array.from(new Set([backlinkUrl, ...extractUrls(promo)].filter(Boolean)));
+  const backlinkUrlLines = backlinkUrls.length
+    ? backlinkUrls.map(url => `- ${url}`).join('\\n')
+    : '없음';
 
-  const content = `### [PROJECT INFO] ###\\n${info}\\n\\n### [PROMO TEXT] ###\\n${promo}`;
+  const content = [
+    `### [PROJECT INFO] ###\\n${info}`,
+    `### [PROMO TEXT] ###\\n${promo}`,
+    `### [BACKLINK INFO] ###\\nURLS:\\n${backlinkUrlLines}\\nANCHOR_TEXTS:\\n${anchorTexts || '없음'}\\nRULE: URL을 단독 텍스트로 노출하지 말고 SEO 앵커텍스트 기반 하이퍼링크로 작성하세요. 하단 고정 홍보문구의 URL도 백링크 대상입니다.`
+  ].join('\\n\\n');
   const res = await fetch('/save_profile', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({name, content})
+    body: JSON.stringify({name, content, original: editingProjectFile})
   });
   const data = await res.json();
   if (data.status === 'success') {
@@ -588,12 +727,10 @@ function renderPreview(platform) {
     return;
   }
   const post = (latestPreviewData.posts || {})[platform] || {};
-  const fileLine = latestPreviewData.file ? `[File] ${latestPreviewData.file}\\n` : '';
-  const platformLine = `[Platform] ${platform}\\n`;
   const body = post.title || post.content
     ? `Title: ${post.title || ''}\\n\\n${post.content || ''}`
     : latestPreviewData.preview || '';
-  preview.innerText = body ? `${fileLine}${platformLine}\\n${body}` : 'No preview result.';
+  preview.innerText = body || 'No preview result.';
 }
 
 function copyPreview() {
